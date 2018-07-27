@@ -6,6 +6,8 @@ dir_raw <- "data/raw"
 tzone <- "US/Central"
 id <- "millennium.id"
 
+dirr::gzip_files(dir_raw)
+
 # run MBO query
 #   * Patients - by Medication (Generic) - Location
 #       - Facility (Curr): HC Childrens
@@ -24,11 +26,27 @@ mbo_id <- concat_encounters(potential_pts$millennium.id)
 #   * Medications - Inpatient - Prompt
 #       - Medication (Generic): norepinephrine
 
+raw_weights <- read_data(dir_raw, "events-weight", FALSE) %>%
+    as.events(order_var = FALSE) %>%
+    mutate_at(vars(event.result), as.numeric) %>%
+    filter(
+        event.result <= 2.5,
+        event.result.units == "kg"
+    )
+
+pts <- distinct(raw_weights, millennium.id)
+
 meds_norepi <- read_data(dir_raw, "meds", FALSE) %>%
     as.meds_inpt() %>%
+    semi_join(pts, by = id) %>%
     calc_runtime() %>%
-    summarize_data()
+    summarize_data() 
 
-raw_weights <- read_data(dir_raw, "events-weight", FALSE) %>%
-    as.events(order_var = FALSE) 
-
+norepi_wt <- meds_norepi %>%
+    inner_join(
+        raw_weights[c(id, "event.datetime", "event.result")],
+        by = id
+    ) %>%
+    filter(event.datetime < stop.datetime) %>%
+    arrange(millennium.id, drip.count, event.datetime) %>%
+    distinct(millennium.id, .keep_all = TRUE)
